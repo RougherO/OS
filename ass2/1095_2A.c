@@ -3,21 +3,23 @@
 #include <threads.h>
 #include <time.h>
 
-void my_handler(int sig) {
-  if (sig == SIGINT) {
-    printf("Haha not stopping\n");
-  }
+void my_handler(int sig)
+{
+    if (sig == SIGINT) {
+        printf("Haha not stopping\n");
+    }
 }
 
-int main() {
-  if (signal(SIGINT, my_handler) < 0) {
-    perror("singal: ");
-  }
+int main()
+{
+    if (signal(SIGINT, my_handler) < 0) {
+        perror("singal: ");
+    }
 
-  struct timespec duration = {.tv_sec = 1};
+    struct timespec duration = { .tv_sec = 1 };
 
-  do {
-    puts("Cant stop me!!");
-    thrd_sleep(&duration, NULL);
-  } while (1);
+    do {
+        puts("Cant stop me!!");
+        thrd_sleep(&duration, NULL);
+    } while (1);
 }

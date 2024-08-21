@@ -116,7 +116,7 @@ int comp_file(char const* file1, char const* file2)
     }
 
     close(fd1);
-    close(fd1);
+    close(fd2);
 
     return is_same;
 }
@@ -133,9 +133,9 @@ void print_file(char const* filename)
 
 int main()
 {
-    char const* sp_filename = "sendp";
-    char const* rp_filename = "recvp";
-    char const* rc_filename = "recvc";
+    char const* sp_filename = "sendp"; /* sent file's name from parent */
+    char const* rp_filename = "recvp"; /* received file's name in parent */
+    char const* rc_filename = "recvc"; /* received file's name in child */
     char const* fifo1       = "fifo1";
     char const* fifo2       = "fifo2";
 
