@@ -1,197 +1,288 @@
-#include <fcntl.h>
-#include <stddef.h>
+/***********************************************************************
+ * Name: Chirag Chowdhury
+ * Roll: 002211001095
+ *
+ * Date: 12.08.2024
+ *
+ * Assignment: 2B, IPC using Named Pipe (FIFO)
+ *      Steps involved in this program:
+ *      Step 1: Given File -> (process-1) -> |FIFO-1| -> (process-2) -> output-2
+ *      Step 2: Given File -> (process-2) -> |FIFO-2| -> (process-1) -> output-1
+ *      Step 3: Comapre output-1 & output-2
+ *
+ *
+ * Input Description: File Name
+ *
+ * Output Description: Comments related with process creation and execution + File Comaprision (true/false) + Time Required for Double Transfer
+ *
+ *
+ * Compilation Command: gcc 1095_2B.c
+ * Execution Sequence: ./a.out <file_name>
+ *
+ *
+ * Sample Input: very-large-file
+ * Sample Output:
+ /-----------------------------------
+Created processes with Pid-7834 & Pid-7835
+
+Pid-7834: waiting for reader...
+Pid-7834: Done writing
+Pid-7834: waiting for writer...
+Pid-7834: got a writer
+Pid-7834: Done reading
+Pid-7835: waiting for writer...
+Pid-7835: got a writer
+Pid-7835: Done reading
+Pid-7835: waiting for reader...
+Pid-7835: Done writing
+
+Time required for double tranfer = 4.068030 seconds
+
+Compare generated files
+Files are identical
+ -----------------------------------/
+***********************************************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <time.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/time.h>
 
-#define BUF_SIZE 1024
+void write_fifo(char const*, char const*);
+void read_fifo(char const*, char const*);
+int compare_files(char const*, char const*);
 
-double get_delta(struct timespec start, struct timespec end)
+int main(int argc, char** argv)
 {
-    return (end.tv_sec - start.tv_sec) * 1000 + (end.tv_nsec - start.tv_nsec) * 1e-6;
-}
-
-void create_file(char const* filename, size_t size)
-{
-    FILE* big_file = fopen(filename, "w");
-
-    char const* msg = "Hello World!";
-    fputs(msg, big_file);
-    for (size_t i = strlen(msg); i < size; ++i) {
-        fputc(0, big_file);
-    }
-}
-
-void send_file(char const* filename, char const* fifoname)
-{
-    int fifo_fd = open(fifoname, O_WRONLY);
-    if (fifo_fd < 0) {
-        perror("error opening fifo in send_file");
-        exit(1);
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+        exit(EXIT_FAILURE);
     }
 
-    int file_fd = open(filename, O_RDONLY);
-    if (file_fd < 0) {
-        perror("error opening file in send_file");
-        exit(1);
+    pid_t proc1, proc2;
+    int status               = 0;
+    char const* fifo1        = "Imitator";
+    char const* fifo2        = "Mr. Mime";
+    char const* output_file1 = "output_file1";
+    char const* output_file2 = "output_file2";
+    double time_spent;
+    struct timeval start, end;
+
+    // Removes link if already exists
+    unlink(fifo1);
+    unlink(fifo2);
+
+    // creat FIFOs
+    if (mkfifo(fifo1, 0666) == -1 || mkfifo(fifo2, 0666) == -1) {
+        perror("mkfifo");
+        exit(EXIT_FAILURE);
     }
 
-    char buffer[BUF_SIZE] = { 0 };
-    ssize_t bytes         = 0;
-    while ((bytes = read(file_fd, buffer, BUF_SIZE)) > 0) {
-        if (write(fifo_fd, buffer, bytes) != bytes) {
-            perror("error writing to fifo in send_file");
-            exit(1);
-        }
-    }
-    if (bytes < 0) {
-        perror("error reading file in send_file");
-        exit(1);
+    // Start the Clock
+    gettimeofday(&start, NULL);
+
+    // creating process 1
+    proc1 = fork();
+    if (proc1 < 0) {
+        perror("Problem creating proc1");
+        exit(EXIT_FAILURE);
     }
 
-    close(fifo_fd);
-    close(file_fd);
-}
-
-void recv_file(char const* filename, char const* fifoname)
-{
-    int fifo_fd = open(fifoname, O_RDONLY);
-    if (fifo_fd < 0) {
-        perror("error opening fifo in recv_file");
-        exit(1);
-    }
-
-    int file_fd = open(filename, O_CREAT | O_WRONLY, 0666);
-    if (file_fd < 0) {
-        perror("error opening file in recv_file");
-        exit(1);
-    }
-
-    char buffer[BUF_SIZE] = { 0 };
-    ssize_t bytes         = 0;
-    while ((bytes = read(fifo_fd, buffer, BUF_SIZE)) > 0) {
-        if (write(file_fd, buffer, bytes) != bytes) {
-            perror("error writing to file in recv_file");
-            exit(1);
-        }
-    }
-    if (bytes < 0) {
-        perror("error reading fifo in recv_file");
-        exit(1);
-    }
-
-    close(file_fd);
-    close(fifo_fd);
-}
-
-int comp_file(char const* file1, char const* file2)
-{
-    int fd1 = open(file1, O_RDONLY);
-    if (fd1 < 0) {
-        perror("error opening file in comp_file");
-        exit(1);
-    }
-
-    int fd2 = open(file2, O_RDONLY);
-    if (fd2 < 0) {
-        perror("error opening file in comp_file");
-        exit(1);
-    }
-
-    char buffer1[BUF_SIZE], buffer2[BUF_SIZE];
-    ssize_t bytes1, bytes2;
-
-    int is_same = 0;
-    while ((bytes1 = read(fd1, buffer1, BUF_SIZE)) > 0
-           && (bytes2 = read(fd2, buffer2, BUF_SIZE)) > 0) {
-        /* Compare the file byte by byte */
-        if (bytes1 != bytes2 || memcmp(buffer1, buffer2, BUF_SIZE) != 0) {
-            is_same = -1;
-            break;
+    // creating process 2
+    if (proc1 != 0) {
+        proc2 = fork();
+        if (proc2 < 0) {
+            perror("Problem creating proc2");
+            exit(EXIT_FAILURE);
         }
     }
 
-    close(fd1);
-    close(fd2);
+    /*
+     * pid values from diffent prospective
+     *           Parent      Proc1       Proc2
+     * Parent      0           x           y
+     * Proc1:      z           0           0
+     * Proc2:      z           x           0
+     */
 
-    return is_same;
+    // In process 1
+    if (proc1 == 0) {
+        // Assigning a +ve value to proc2
+        proc2 = 1;
+    }
+
+    // Parent Process
+    if (proc1 != 0 && proc2 != 0) {
+        printf("Created processes with Pid-%d & Pid-%d\n\n", proc1, proc2);
+    }
+
+    // Step 1
+    if (proc1 == 0) {
+        // process 1 writes into FIFO
+        write_fifo(fifo1, argv[1]);
+    } else if (proc2 == 0) {
+        // Processes 2 reads form FIFO
+        read_fifo(fifo1, output_file2);
+    }
+
+    // Step 2
+    if (proc2 == 0) {
+        // process 2 writes into FIFO
+        write_fifo(fifo2, argv[1]);
+        exit(EXIT_SUCCESS);
+    } else if (proc1 == 0) {
+        // Processes 1 reads form FIFO
+        read_fifo(fifo2, output_file1);
+        exit(EXIT_SUCCESS);
+    } else {
+        // Wait for processes to finish in Parent
+        waitpid(proc1, &status, 0);
+        waitpid(proc2, &status, 0);
+        // Stop the clock
+        gettimeofday(&end, NULL);
+        time_spent = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
+
+        // Get time for double transfer
+        printf("\nTime required for double tranfer = %f seconds\n", (time_spent));
+    }
+
+    // Step 3 - Parent Process
+    if (proc1 != 0 && proc2 != 0) {
+        printf("\nCompare generated files\n");
+
+        int check_flag = compare_files(output_file1, output_file2);
+        if (check_flag == 0) {
+            printf("Files are identical\n");
+        } else if (check_flag == 1) {
+            printf("Files aren't identical\n");
+        } else {
+            printf("Error: File Comparison.\n");
+        }
+    }
+
+    unlink(fifo1);
+    unlink(fifo2);
+
+    return 0;
 }
 
-void print_file(char const* filename)
+void write_fifo(char const* fifo, char const* filename)
 {
-    FILE* file = fopen(filename, "r");
+    pid_t pid = getpid();
+    FILE* fp;
+    int fd;
+    char line[200];
 
-    char buffer[BUF_SIZE];
-    while (fgets(buffer, BUF_SIZE, file)) {
-        printf("%s", buffer);
+    fp = fopen(filename, "r");
+    if (fp == NULL) {
+        perror("Failed to open file for reading");
+        exit(EXIT_FAILURE);
     }
+
+    printf("Pid-%d: waiting for reader...\n", pid);
+
+    fd = open(fifo, O_WRONLY);
+    if (fd < 0) {
+        perror("Failed to open FIFO for writing");
+        fclose(fp);
+        exit(EXIT_FAILURE);
+    }
+
+    while (fgets(line, sizeof(line), fp)) {
+        int len = strlen(line);
+        int num = write(fd, line, len);
+        if (num != len) {
+            perror("Failed to write into FIFO");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    close(fd);
+    fclose(fp);
+
+    printf("Pid-%d: Done writing\n", pid);
 }
 
-int main()
+void read_fifo(char const* fifo, char const* output_file)
 {
-    char const* sp_filename = "sendp"; /* sent file's name from parent */
-    char const* rp_filename = "recvp"; /* received file's name in parent */
-    char const* rc_filename = "recvc"; /* received file's name in child */
-    char const* fifo1       = "fifo1";
-    char const* fifo2       = "fifo2";
+    pid_t pid = getpid();
+    FILE* fp;
+    int fd;
+    ssize_t num;
+    char buffer[300];
 
-    create_file(sp_filename,
-                1024 * 1024 * 1024 * sizeof(char)); /* Creating a 1G file */
-
-    if (mkfifo(fifo1, 0666) < 0) {
-        perror("fifo1");
-        exit(1);
-    }
-    if (mkfifo(fifo2, 0666) < 0) {
-        perror("fifo2");
-        exit(1);
+    fp = fopen(output_file, "w");
+    if (fp == NULL) {
+        perror("Failed to open file for writing");
+        exit(EXIT_FAILURE);
     }
 
-    struct timespec proc_start, proc_end;
-    timespec_get(&proc_start, TIME_UTC);
-    switch (fork()) {
-        case -1:
-            perror("fork");
-            exit(1);
-            break;
+    printf("Pid-%d: waiting for writer...\n", pid);
 
-        case 0:
-            /* Receive and send file from and to parent process */
-            recv_file(rc_filename, fifo1);
-            send_file(rc_filename, fifo1);
-
-            timespec_get(&proc_end, TIME_UTC); /* Get the current time in child process */
-            printf("Time taken for the child process to recv and send file: %lfms\n",
-                   get_delta(proc_start, proc_end));
-            break;
-
-        default:
-            /* Send and receive file to and from child process */
-            send_file(sp_filename, fifo1);
-            recv_file(rp_filename, fifo1);
-
-            timespec_get(&proc_end, TIME_UTC); /* Get the current time in parent process */
-            printf("Time taken for the parent process to send and recv file: %lfms\n",
-                   get_delta(proc_start, proc_end));
-
-            wait(NULL); /* Wait for child to exit. Prevent zombie process */
-
-            if (comp_file(sp_filename, rp_filename) < 0) {
-                printf("Files are different\n");
-            } else {
-                printf("Files are same\n");
-                printf("Content of %s:\n", sp_filename);
-                print_file(sp_filename);
-                printf("Content of %s:\n", rp_filename);
-                print_file(rp_filename);
-            }
-
-            /* Deleting the FIFO's, cleaningup */
-            unlink(fifo1);
-            unlink(fifo2);
+    fd = open(fifo, O_RDONLY);
+    if (fd < 0) {
+        perror("Failed to open FIFO for reading");
+        fclose(fp);
+        exit(EXIT_FAILURE);
     }
+
+    printf("Pid-%d: got a writer\n", pid);
+
+    while ((num = read(fd, buffer, sizeof(buffer))) > 0) {
+        fwrite(buffer, 1, num, fp);
+    }
+
+    if (num == -1) {
+        perror("Failed to read from FIFO");
+    }
+
+    close(fd);
+    fclose(fp);
+
+    printf("Pid-%d: Done reading\n", pid);
+}
+
+int compare_files(char const* file1, char const* file2)
+{
+    FILE* f1 = fopen(file1, "r");
+    FILE* f2 = fopen(file2, "r");
+
+    if (!f1) {
+        perror("Compare: Couldn't open file1");
+        return -1;
+    }
+    if (!f2) {
+        perror("Compare: Couldn't open file2");
+        fclose(f1);
+        return -1;
+    }
+
+    char ch1, ch2;
+    // Match one character at a time
+    while (ch1 != EOF && ch2 != EOF) {
+        if (ch1 != ch2) {
+            fclose(f1);
+            fclose(f2);
+            return 1;
+        }
+        ch1 = fgetc(f1);
+        ch2 = fgetc(f2);
+    }
+
+    // One file ended prematurly
+    if ((ch1 != EOF) || (ch2 != EOF)) {
+        printf("%c + %c", ch1, ch2);
+        fclose(f1);
+        fclose(f2);
+        return 1;
+    }
+
+    fclose(f1);
+    fclose(f2);
+    return 0;
 }

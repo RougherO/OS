@@ -1,25 +1,63 @@
-#include <signal.h>
-#include <stdio.h>
-#include <threads.h>
-#include <time.h>
+/***********************************************************************
+ * Name: Chirag Chowdhury
+ * Roll: 002211001095
+ *
+ * Date: 05.08.2024
+ *
+ * Assignment: 2A
+ *       [Catch the signal ‘SIGINT’ and display “Ha Ha, Not Stopping”.
+ *        Use ‘signal’ system call. Always use “perror” to check the return status of a library/system call.]
+ *
+ * Input Description: None
+ *
+ * Output Description: Program Comments
+ *
+ *
+ * Compilation Command: gcc 1095_2A.c
+ * Execution Sequence: ./a.out
+ *
+ *
+ * Sample Input: None
+ * Sample Output:
+ /-----------------------------------
+Somebody stop me
+Somebody stop me
+Somebody stop me
+Somebody stop me
+^CHa Ha, Not Stopping
+Somebody stop me
+Somebody stop me
+Somebody stop me
+^CHa Ha, Not Stopping
+Somebody stop me
+^Z
+[1]+  Stopped                 ./a.out
+ -----------------------------------/
+***********************************************************************/
 
-void my_handler(int sig)
+#include <stdio.h>
+#include <signal.h>
+#include <unistd.h>
+#include <stdlib.h>
+
+void handle_sigint(int);
+
+int main(int argc, char** argv)
 {
-    if (sig == SIGINT) {
-        printf("Haha not stopping\n");
+    if (signal(SIGINT, handle_sigint) == SIG_ERR) {
+        perror("signal");
+        exit(1);
     }
+
+    while (1) {
+        printf("Somebody stop me\n");
+        sleep(1);
+    }
+
+    return 0;
 }
 
-int main()
+void handle_sigint(int sig)
 {
-    if (signal(SIGINT, my_handler) < 0) {
-        perror("singal: ");
-    }
-
-    struct timespec duration = { .tv_sec = 1 };
-
-    do {
-        puts("Cant stop me!!");
-        thrd_sleep(&duration, NULL);
-    } while (1);
+    printf("Ha Ha, Not Stopping\n");
 }
